@@ -3,7 +3,7 @@ import pandas as pd
 
 from rdflib import Graph, BNode, Literal, Namespace
 # See https://rdflib.readthedocs.io/en/latest/_modules/rdflib/namespace.html
-from rdflib.namespace import QB, RDF, XSD
+from rdflib.namespace import QB, RDF, XSD, DCTERMS
 
 NS = Namespace("https://stochel.cz/ontology#")
 NSR = Namespace("https://stochel.cz/resources/")
@@ -43,6 +43,7 @@ def create_dimensions(collector: Graph):
     collector.add((county, RDFS.label, Literal("Okres", lang="cs")))
     collector.add((county, RDFS.label, Literal("County", lang="en")))
     collector.add((county, RDFS.range, XSD.string))
+    collector.add((region, QB.concept, SDMX_CONCEPT.classSystem))
 
     region = NS.region
     collector.add((region, RDF.type, RDFS.Property))
@@ -50,6 +51,7 @@ def create_dimensions(collector: Graph):
     collector.add((region, RDFS.label, Literal("Kraj", lang="cs")))
     collector.add((region, RDFS.label, Literal("Region", lang="en")))
     collector.add((region, RDFS.range, XSD.string))
+    collector.add((region, QB.concept, SDMX_CONCEPT.refArea))
 
     field_of_care = NS.field_of_care
     collector.add((field_of_care, RDF.type, RDFS.Property))
@@ -57,6 +59,7 @@ def create_dimensions(collector: Graph):
     collector.add((field_of_care, RDFS.label, Literal("Obor péče", lang="cs")))
     collector.add((field_of_care, RDFS.label, Literal("Field of care", lang="en")))
     collector.add((field_of_care, RDFS.range, XSD.string))
+    collector.add((region, QB.concept, SDMX_CONCEPT.refArea))
 
     return [county, region, field_of_care]
 
@@ -69,6 +72,7 @@ def create_measure(collector: Graph):
     collector.add( ( number_of_care_providers, RDFS.label, Literal("Počet poskytovatelů péče", lang="cs") ) )
     collector.add( ( number_of_care_providers, RDFS.label, Literal("Number of care providers", lang="en") ) )
     collector.add( ( number_of_care_providers, RDFS.range, XSD.integer ) )
+    collector.add( ( number_of_care_providers, RDFS.subPropertyOf, SDMX_MEASURE.obsValue) )
 
     return [number_of_care_providers]
 
@@ -98,28 +102,34 @@ def create_dataset(collector: Graph, structure):
     collector.add((dataset, RDFS.label, Literal(
         "Number of care providers", lang="en")))
     collector.add((dataset, QB.structure, structure))
+    collector.add((dataset, DCTERMS.issued, Literal("2023-03-13", datatype=XSD.date)))
+    collector.add((dataset, DCTERMS.modified, Literal("2023-03-13", datatype=XSD.date)))
+    collector.add((dataset, DCTERMS.publisher, Literal("https://stochel.cz", datatype=XSD.anyURI)))
+    collector.add((dataset, DCTERMS.license, Literal("https://creativecommons.org/licenses/by/4.0/", datatype=XSD.anyURI)))
+    collector.add((dataset, DCTERMS.title, Literal("Care providers", lang="en")))
+    collector.add((dataset, DCTERMS.subject, Literal("Number of care providers in areas", lang="en")))
+    collector.add((dataset, DCTERMS.description, Literal("Number of care providers in areas in Czech Republic", lang="en")))
+    collector.add((dataset, RDFS.comment, Literal("Number of care providers in areas in Czech Republic", lang="en")))
 
     return dataset
 
 
 def create_observations(collector: Graph, dataset, data):
     data_grouped = data.groupby(["Okres", "Kraj", "OborPece"])
-    ##for index, row in enumerate(data_grouped):
-    index = 0
-    for row in data_grouped.groups:
-        index += 1
+    sizes = data_grouped.size().array ## Velmi krkolomne, ale co uz
+    for index, row in enumerate(data_grouped):
         resource = NSR["observation-" + str(index).zfill(8)]
-        create_observation(collector, dataset, resource, row)
+        create_observation(collector, dataset, resource, row, sizes[index])
 
 
-def create_observation(collector: Graph, dataset, resource, data):
+def create_observation(collector: Graph, dataset, resource, data, number):
     collector.add((resource, RDF.type, QB.Observation))
     collector.add((resource, QB.dataSet, dataset))
-    collector.add((resource, NS.county, Literal(data[0])))
-    collector.add((resource, NS.region, Literal(data[1])))
-    collector.add((resource, NS.field_of_care, Literal(data[2])))
+    collector.add((resource, NS.county, Literal(data[0][0])))
+    collector.add((resource, NS.region, Literal(data[0][1])))
+    collector.add((resource, NS.field_of_care, Literal(data[0][2])))
     collector.add((resource, NS.number_of_care_providers, Literal(
-        len(data), datatype=XSD.integer)))
+        number, datatype=XSD.integer)))
 
 def convert_date(value):
     return value.replace(".", "-")
